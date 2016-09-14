@@ -1,4 +1,4 @@
-import requests, logging, re, aiohttp, asyncio  
+import requests, logging, re, aiohttp, asyncio, time
 
 from datetime import (
 	datetime,
@@ -20,13 +20,16 @@ TO = None
 
 def main():
 	loop = asyncio.get_event_loop()
-	area = Area('https://www.freecycle.org/browse/UK/London')
-	groups = loop.run_until_complete(area.get_groups(SEARCH_TERMS, FROM, TO)) 
+	with aiohttp.ClientSession(loop=loop) as session:
+		area = Area('https://www.freecycle.org/browse/UK/London')
+		groups = loop.run_until_complete(area.get_groups(session, SEARCH_TERMS, FROM, TO)) 
 	display(groups)
 
-async def get_and_parse(url, *args, **kwargs):
-	response = await aiohttp.request('GET', url)
-	response = (await response.text())
+async def get_and_parse(session, url, *args, **kwargs):
+	async with session.get(url) as response:
+		if response.status != 200:
+			logging.error(str(response.status) + ', ' + url)
+		response = await response.read()
 
 	bits = SoupStrainer(args, **kwargs)
 	bs = BeautifulSoup(response, 'lxml', parse_only=bits)
@@ -50,9 +53,9 @@ class Item:
 		# self.desc = _get_desc()
 		# self.image = _get_image()
 
-	async def get_tag(self):
+	async def get_tag(self, session):
 		if self.tag is None:
-			self.tag = await get_and_parse(self.url, id='group_post')
+			self.tag = await get_and_parse(session, self.url, id='group_post')
 		return self.tag
 
 	# def _get_details(self):
@@ -83,25 +86,31 @@ class Page:
 		self.size = None
 		self.items = None
 
-	async def _get_urls(self):
+	async def _get_urls(self, session):
+		logging.error('5')
+		global pages_count
 		if self.child_urls is None:
-			tag = await get_and_parse(self.url, 'a', class_='noDecoration')
+			try:
+				tag = await get_and_parse(session, self.url, 'a', class_='noDecoration')
+				logging.error('7')
+			except Exception as e:
+				logging.error(self.url + ':' + e)
 			tags = tag.select('a.noDecoration')
-
 			if len(tags) == 0:
 				self.empty = True
 				return []
 
 			urls = [tag.get('href') for tag in tags]
-
 			self.child_urls = urls
 			self.size = len(urls)
 
 		return urls
 
-	async def get_items(self):
+	async def get_items(self, session):
+		logging.error('3')
 		if self.items is None:
-			self.child_urls = await self._get_urls()
+			self.child_urls = await self._get_urls(session)
+			logging.error('6')
 			items = []
 
 			if self.empty is True:
@@ -109,7 +118,7 @@ class Page:
 
 			self.items = [Item(item_url) for item_url in self.child_urls]
 
-			for f in asyncio.as_completed([item.get_tag() for item in self.items]):
+			for f in asyncio.as_completed([item.get_tag(session) for item in self.items]):
 				result = await f
 
 		return self.items
@@ -117,54 +126,45 @@ class Page:
 
 class Group:
 
-	def __init__(self, url, name):
+	def __init__(self, name, url):
 		global SEARCH_STR
 		self.url = url
 		self.name = name
 		self.base_page = self.url + SEARCH_STR
-		self.pages = None
+		self.pages = []
 
-	async def get_pages(self, search_terms='', from_='', to_=''):
-		if self.pages is None:
-			pages = []
+	async def get_pages(self, session, search_terms='', from_='', to_=''):
+		max_page = 1
+		while (True):
+			max_page += 4
+			pages_block = [Page(self.base_page % (page_no,search_terms,from_,to_)) for page_no in range(max_page-4, max_page)]
+			for f in asyncio.as_completed([page.get_items(session) for page in pages_block]):
+				result = await f
 
-			page_no = 0
-			while (True):
-				page_no += 1
-				page = Page(self.base_page % (page_no,search_terms,from_,to_))
-				await page.get_items()
+			for page in pages_block:
 				if page.empty == True:
-					break
+					return self.pages
 
-				pages.append(page)
+				self.pages.append(page)
 
-				if page.size < 100:
-					break
-
-			self.pages = pages
-
-		return self.pages
+				if page.size < 100:	
+					return self.pages
 
 class Area:
 
 	def __init__(self, url):
-		logging.error('creating Area')
 		self.url = url
 		self.groups = None
 
-	def __init__(self, url):
-		self.url = url
-		self.groups = None
-
-	async def get_groups(self, search_terms, to_='', from_=''):
+	async def get_groups(self, session, search_terms, to_='', from_=''):
 		if self.groups is None:
-			tag = await get_and_parse(self.url, 'section', id='content')
+			tag = await get_and_parse(session, self.url, 'section', id='content')
 
 			groups_info = [{'name': url_tag.get_text(), 'url': url_tag.get('href')} for url_tag in tag.select('li > a')]
 
-			self.groups = [Group(info['url'], info['name']) for info in groups_info]
+			self.groups = [Group(info['name'], info['url']) for info in groups_info]
 
-			for f in asyncio.as_completed([group.get_pages(search_terms, from_, to_) for group in self.groups]):
+			for f in asyncio.as_completed([group.get_pages(session, search_terms, from_, to_) for group in self.groups]):
 				result = await f
 		return self.groups
 
