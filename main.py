@@ -17,8 +17,23 @@ SEARCH_TERMS = 'desk'
 SEARCH_STR = '/posts/search?page=%s&search_words=%s&include_offers=on&include_wanteds=off&date_start=%s&date_end=%s&resultsperpage=100'
 FROM = '2016-09-08'
 TO = None
+# pages_count = 0
+# items_count = 0
 open_requests = 0
 limit = 10
+
+# def print_count(url, page_type):
+# 	global items_count
+# 	global pages_count
+# 	count = 0
+# 	if page_type=='item':
+# 		items_count += 1
+# 		count = items_count
+# 	elif page_type=='page':
+# 		pages_count += 1
+# 		count = pages_count
+
+# 	logging.error(str(time.time()) + page_type + ':' + str(count) + ':' + url)
 
 
 def main():
@@ -43,6 +58,8 @@ async def get_and_parse(session, url, *args, **kwargs):
 	async with session.get(url) as response:
 		logging.error('received')
 		open_requests -= 1
+		# if page_type:
+		# 	print_count(url, page_type)
 		if response.status != 200:
 			logging.error(str(response.status) + ', ' + url)
 		response = await response.read()
