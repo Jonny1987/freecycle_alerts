@@ -43,6 +43,8 @@ def main():
 		area = Area('https://www.freecycle.org/browse/UK/London')
 		groups = loop.run_until_complete(area.get_groups(session, SEARCH_TERMS, FROM, TO)) 
 	display(groups)
+		# group = Group('Hammersmith', 'https://groups.freecycle.org/group/hammersmithandfulhamfreecycle')
+		# groups = loop.run_until_complete(group.get_pages(session, SEARCH_TERMS, FROM, TO)) 
 
 async def check_open():
 	global open_requests
