@@ -19,6 +19,7 @@ FROM = '2016-09-08'
 TO = None
 # pages_count = 0
 # items_count = 0
+# last_time = 0
 open_requests = 0
 limit = 10
 
@@ -58,6 +59,10 @@ async def get_and_parse(session, url, *args, **kwargs):
 	async with session.get(url) as response:
 		logging.error('received')
 		open_requests -= 1
+		#global last_time
+		# time_now = time.time()
+		# logging.error(time_now - last_time)
+		# last_time=time_now
 		# if page_type:
 		# 	print_count(url, page_type)
 		if response.status != 200:
