@@ -17,6 +17,9 @@ SEARCH_TERMS = 'desk'
 SEARCH_STR = '/posts/search?page=%s&search_words=%s&include_offers=on&include_wanteds=off&date_start=%s&date_end=%s&resultsperpage=100'
 FROM = '2016-09-08'
 TO = None
+open_requests = 0
+limit = 10
+
 
 def main():
 	loop = asyncio.get_event_loop()
@@ -25,8 +28,21 @@ def main():
 		groups = loop.run_until_complete(area.get_groups(session, SEARCH_TERMS, FROM, TO)) 
 	display(groups)
 
+async def check_open():
+	global open_requests
+	global limit
+	while(open_requests > limit):
+		await asyncio.sleep(0.001)
+	return
+
 async def get_and_parse(session, url, *args, **kwargs):
+	global open_requests
+	await check_open()
+	print(open_requests)
+	open_requests += 1
 	async with session.get(url) as response:
+		logging.error('received')
+		open_requests -= 1
 		if response.status != 200:
 			logging.error(str(response.status) + ', ' + url)
 		response = await response.read()
